@@ -1,7 +1,7 @@
 [project]
 name = "lerobot-recorder"
 version = "0.1.0"
-description = "Add your description here"
+description = "Convert PiPER-X/GELLO raw sessions to LeRobot Dataset v3"
 readme = "README.md"
 authors = [
     { name = "RightOrNot", email = "jue1251665735@outlook.com" }
@@ -11,8 +11,25 @@ dependencies = []
 
 [project.optional-dependencies]
 dataset = [
-    "lerobot[dataset]>=0.6.1",
+    "lerobot[dataset]==0.6.1",
+    "torch>=2.2.1,<2.12",
+    "torchvision>=0.21,<0.27",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "ruff>=0.14",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
+torchvision = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [project.scripts]
 lerobot-recorder = "lerobot_recorder:main"
