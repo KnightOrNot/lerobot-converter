@@ -88,8 +88,8 @@ OUTPUT_DATASET/
 ## （4）环境要求
 
 - Ubuntu 或其他受 LeRobot 支持的 Linux 环境
-- Python 3.12（由 `.python-version` 指定）
-- Git & [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Python 3.12（由 `.python-version` 指定并通过 pyenv 安装）
+- Git、[pyenv](https://github.com/pyenv/pyenv) 与 [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - 转换数据集需要 dataset 可选依赖
 - 后续处理视频时，系统需要 FFmpeg 共享库
 
@@ -103,11 +103,14 @@ OUTPUT_DATASET/
 
 ```bash
 cd lerobot_converter
-uv python install 3.12
-uv sync --frozen --extra dataset
+requested_version="$(<.python-version)"
+resolved_version="$(pyenv latest -k "$requested_version")"
+pyenv install -s "$resolved_version"
+interpreter="$(PYENV_VERSION="$resolved_version" pyenv which python)"
+UV_NO_MANAGED_PYTHON=1 uv sync --frozen --extra dataset --python "$interpreter"
 ```
 
-`uv sync` 会创建 `.venv` 并安装 LeRobot、PyTorch、TorchCodec、PyAV 以及开发工具。通常无需激活虚拟环境，后续直接使用 `uv run`。
+pyenv 负责 Python 解释器，uv 负责 `.venv` 和锁定依赖；`UV_NO_MANAGED_PYTHON=1` 防止 uv 自行下载另一套 Python。`uv sync` 会安装 LeRobot、PyTorch、TorchCodec、PyAV 以及开发工具。通常无需激活虚拟环境，后续直接使用 `uv run`。
 
 ### 2. 安装系统 FFmpeg
 

@@ -8,10 +8,14 @@
 
 ```bash
 cd /path/to/robot/lerobot_converter
-uv sync --frozen --extra dataset
+requested_version="$(<.python-version)"
+resolved_version="$(pyenv latest -k "$requested_version")"
+pyenv install -s "$resolved_version"
+interpreter="$(PYENV_VERSION="$resolved_version" pyenv which python)"
+UV_NO_MANAGED_PYTHON=1 uv sync --frozen --extra dataset --python "$interpreter"
 ```
 
-Linux 下锁文件使用 PyTorch CPU wheel；转换纯关节数据不需要 CUDA。
+pyenv 负责安装和选择 Python，uv 负责 `.venv`、锁定依赖和命令运行；不要让 uv 创建另一套解释器。Linux 下锁文件使用 PyTorch CPU wheel；转换纯关节数据不需要 CUDA。
 
 ### 1. Python 依赖与系统视频库
 
