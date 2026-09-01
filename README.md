@@ -49,7 +49,43 @@ lerobot_converter/
 - `tests/test_converter.py`：验证转换规则、失败保护、字段映射和报告内容。
 - `docs/DEVELOPMENT.md`：详细的数据约定、算法、调试和测试流程。
 
-## （3）环境要求
+## （3）转换格式契约
+
+### 1. 转换前格式
+
+转换器的输入不是任意 JSON 或单个 JSONL 文件，而是一个完整的 raw session 目录：
+
+```text
+session_YYYYMMDD_HHMMSS/
+├── manifest.json
+└── episodes/
+    ├── episode_000000.jsonl
+    ├── episode_000001.jsonl
+    └── episode_000002.jsonl.partial
+```
+
+`manifest.json` 声明格式版本、任务、机器人、控制频率、单位、关节名称和夹爪范围。每个正式 `episode_*.jsonl` 表示一个 episode，每行是一帧，必须包含时间戳、连续 sequence、七维 action、七维关节位置与速度、七维末端位姿和夹爪位置。`.jsonl.partial` 表示未完整保存的数据，只会被统计并忽略。完整 schema 和示例见[开发与调试手册](docs/DEVELOPMENT.md#3-raw-数据约定)。
+
+### 2. 转换后格式
+
+输出是一个可由 LeRobot 直接读取的 Dataset v3 目录，并额外包含本项目生成的质量报告：
+
+```text
+OUTPUT_DATASET/
+├── data/
+│   └── chunk-000/
+│       └── file-000.parquet
+├── meta/
+│   ├── episodes/chunk-000/file-000.parquet
+│   ├── info.json
+│   ├── stats.json
+│   └── tasks.parquet
+└── quality_report.json
+```
+
+`meta/info.json` 的 `codebase_version` 为 `v3.0`，`fps` 等于转换参数，Parquet 数据包含 `observation.state`、`action` 以及默认启用的 `observation.velocity` 和 `observation.ee_pose`。`quality_report.json` 不属于 LeRobot 标准文件，是转换器附加的采样质量报告。完整输出说明见[开发与调试手册](docs/DEVELOPMENT.md#4-lerobot-dataset-v3-输出约定)。
+
+## （4）环境要求
 
 - Ubuntu 或其他受 LeRobot 支持的 Linux 环境
 - Python 3.12（由 `.python-version` 指定）
@@ -59,7 +95,7 @@ lerobot_converter/
 
 本项目使用独立 `.venv`，不会修改已经通过硬件验证的 `agilexrobotics` 或 `gello_software` 环境。Linux 下锁文件选择 PyTorch CPU wheel，纯关节数据转换不需要 CUDA。
 
-## （4）快速开始
+## （5）快速开始
 
 ### 1. 进入项目并初始化环境
 
@@ -136,7 +172,7 @@ uv run --extra dataset lerobot-converter \
 python -m json.tool ../data/lerobot/session_YYYYMMDD_HHMMSS/quality_report.json
 ```
 
-## （5）与数据记录脚本配合
+## （6）与数据记录脚本配合
 
 工作区根目录的 `start_data_record.sh` 默认在记录结束、安全回零并关闭 CAN/ZMQ 后调用：
 
@@ -156,7 +192,7 @@ lerobot_converter/.venv/bin/lerobot-converter
 ./start_data_record.sh --task "pick up the object" --skip-conversion
 ```
 
-## （6）开发检查
+## （7）开发检查
 
 ```bash
 uv run --group dev pytest
