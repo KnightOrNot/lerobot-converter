@@ -743,7 +743,7 @@ dataset = [
 ]
 
 [[package]]
-name = "lerobot-recorder"
+name = "lerobot-converter"
 version = "0.1.0"
 source = { editable = "." }
 

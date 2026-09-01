@@ -6,7 +6,11 @@ from typing import Any
 
 import pytest
 
-from lerobot_recorder.converter import ConversionError, convert_session, prepare_episode
+from lerobot_converter.converter import (
+    ConversionError,
+    convert_session,
+    prepare_episode,
+)
 
 
 def _frame(sequence: int, timestamp_ns: int) -> dict[str, Any]:

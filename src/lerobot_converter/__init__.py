@@ -45,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_ee_pose=not args.without_ee_pose,
         )
     except (ConversionError, OSError, ValueError) as exc:
-        print(f"lerobot-recorder: {exc}", file=sys.stderr)
+        print(f"lerobot-converter: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
     return 0

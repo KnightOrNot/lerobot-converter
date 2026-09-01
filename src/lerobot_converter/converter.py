@@ -289,7 +289,7 @@ def _default_dataset_factory(**kwargs: Any) -> DatasetProtocol:
     except ImportError as exc:
         raise ConversionError(
             "LeRobot dataset dependencies are not installed; run "
-            "`uv sync --extra dataset` in lerobot_recorder"
+            "`uv sync --extra dataset` in lerobot_converter"
         ) from exc
     return LeRobotDataset.create(**kwargs)
 

@@ -1,5 +1,5 @@
 [project]
-name = "lerobot-recorder"
+name = "lerobot-converter"
 version = "0.1.0"
 description = "Convert PiPER-X/GELLO raw sessions to LeRobot Dataset v3"
 readme = "README.md"
@@ -32,7 +32,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [project.scripts]
-lerobot-recorder = "lerobot_recorder:main"
+lerobot-converter = "lerobot_converter:main"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
