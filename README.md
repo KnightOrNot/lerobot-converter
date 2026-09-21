@@ -2,6 +2,7 @@
 
 `lerobot_converter` 是 PiPER-X/GELLO 数据链路中的离线转换项目。它读取 `gello_software` 记录的不可变 raw session，执行格式校验、按真实时间戳重采样，并生成 LeRobot Dataset v3 和质量报告。该项目不连接 GELLO、PiPER-X、串口或 CAN，也不负责实时数据记录。
 
+
 ## （1）项目边界
 
 完整数据链路分为两个阶段：
