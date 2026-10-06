@@ -1,6 +1,6 @@
 # lerobot_converter
 
-`lerobot_converter` 是 PiPER-X/GELLO 数据链路中的离线转换项目。它读取 `gello_software` 记录的不可变 raw session，执行格式校验、按真实时间戳重采样，并生成 LeRobot Dataset v3 和质量报告。该项目不连接 GELLO、PiPER-X、串口或 CAN，也不负责实时数据记录。
+`lerobot_converter` 是 PiPER-X/GELLO 数据链路中的离线转换项目。它读取 `agilex-gello-software` 记录的不可变 raw session，执行格式校验、按真实时间戳重采样，并生成 LeRobot Dataset v3 和质量报告。该项目不连接 GELLO、PiPER-X、串口或 CAN，也不负责实时数据记录。
 
 
 ## （1）项目边界
@@ -9,7 +9,7 @@
 
 ```text
 阶段一：实时记录
-gello_software/piper_x_follow_record.py
+agilex-gello-software/experiments/piper_x_follow_record.py
         ↓
 data/raw/session_*/manifest.json + episodes/*.jsonl
 ```
@@ -25,7 +25,7 @@ data/lerobot/session_*/ + quality_report.json
 
 | 组件                     | 职责                                                |
 | ---------------------- | ------------------------------------------------- |
-| `gello_software`       | 跟随控制期间记录最终 action 和机械臂 observation，生成 raw session |
+| `agilex-gello-software`       | 跟随控制期间记录最终 action 和机械臂 observation，生成 raw session |
 | `lerobot_converter`    | 只读 raw session，转换为 LeRobot Dataset v3             |
 | `start_data_record.sh` | 编排记录、安全回零和退出后的离线转换                                |
 
@@ -94,7 +94,7 @@ OUTPUT_DATASET/
 - 转换数据集需要 dataset 可选依赖
 - 后续处理视频时，系统需要 FFmpeg 共享库
 
-本项目使用独立 `.venv`，不会修改已经通过硬件验证的 `agilexrobotics` 或 `gello_software` 环境。Linux 下锁文件选择 PyTorch CPU wheel，纯关节数据转换不需要 CUDA。
+本项目使用独立 `.venv`，不会修改已经通过硬件验证的 `agilex-sdk-python` 或 `agilex-gello-software` 环境。Linux 下锁文件选择 PyTorch CPU wheel，纯关节数据转换不需要 CUDA。
 
 ## （5）快速开始
 

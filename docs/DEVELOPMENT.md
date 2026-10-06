@@ -7,7 +7,7 @@
 ## （1）开发环境
 
 ```bash
-cd /path/to/robot/lerobot_converter
+cd /path/to/agilex-controller/lerobot-converter
 requested_version="$(<.python-version)"
 resolved_version="$(pyenv latest -k "$requested_version")"
 pyenv install -s "$resolved_version"
