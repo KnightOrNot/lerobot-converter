@@ -1,206 +1,73 @@
-# lerobot_converter
+# lerobot-converter
 
-`lerobot_converter` 是 PiPER-X/GELLO 数据链路中的离线转换项目。它读取 `agilex-gello-software` 记录的不可变 raw session，执行格式校验、按真实时间戳重采样，并生成 LeRobot Dataset v3 和质量报告。该项目不连接 GELLO、PiPER-X、串口或 CAN，也不负责实时数据记录。
+将 PiPER-X/GELLO 的不可变 raw session 离线转换为 LeRobot Dataset v3。转换器负责格式校验、基于 observation 时间戳的重采样、数据集写入和质量报告，不连接硬件、不录制数据。
 
+推荐 Python 3.12，使用独立环境。controller/GELLO/SDK 使用 Python 3.11，两组解释器通过文件和子进程协作。当前只支持七维关节、夹爪和末端状态，图像与视频接入尚未实现。
 
-## （1）项目边界
-
-完整数据链路分为两个阶段：
-
-```text
-阶段一：实时记录
-agilex-gello-software/experiments/piper_x_follow_record.py
-        ↓
-data/raw/session_*/manifest.json + episodes/*.jsonl
-```
-
-```
-阶段二：离线转换
-lerobot_converter
-        ↓ 校验、重采样、字段映射
-data/lerobot/session_*/ + quality_report.json
-```
-
-各组件职责如下：
-
-| 组件                     | 职责                                                |
-| ---------------------- | ------------------------------------------------- |
-| `agilex-gello-software`       | 跟随控制期间记录最终 action 和机械臂 observation，生成 raw session |
-| `lerobot_converter`    | 只读 raw session，转换为 LeRobot Dataset v3             |
-| `start_data_record.sh` | 编排记录、安全回零和退出后的离线转换                                |
-
-## （2）项目结构
+## 职责与目录
 
 ```text
-lerobot_converter/
-├── README.md
-├── docs/
-│   └── DEVELOPMENT.md
-├── pyproject.toml
-├── uv.lock
-├── src/lerobot_converter/
-│   ├── __init__.py
-│   └── converter.py
-└── tests/
-    └── test_converter.py
+src/lerobot_converter/    CLI、raw 校验、重采样与 LeRobot writer
+tests/                   临时 raw 与 fake writer 回归
+docs/                    架构、安装、数据约定、CLI 与排障
 ```
 
-- `src/lerobot_converter/__init__.py`：定义 `lerobot-converter` CLI 和参数解析。
-- `src/lerobot_converter/converter.py`：实现 manifest/episode 校验、时间戳重采样、LeRobot 写入和质量报告。
-- `tests/test_converter.py`：验证转换规则、失败保护、字段映射和报告内容。
-- `docs/DEVELOPMENT.md`：详细的数据约定、算法、调试和测试流程。
+## 安装
 
-## （3）转换格式契约
-
-### 1. 转换前格式
-
-转换器的输入不是任意 JSON 或单个 JSONL 文件，而是一个完整的 raw session 目录：
-
-```text
-session_YYYYMMDD_HHMMSS/
-├── manifest.json
-└── episodes/
-    ├── episode_000000.jsonl
-    ├── episode_000001.jsonl
-    └── episode_000002.jsonl.partial
-```
-
-`manifest.json` 声明格式版本、任务、机器人、控制频率、单位、关节名称和夹爪范围。每个正式 `episode_*.jsonl` 表示一个 episode，每行是一帧，必须包含时间戳、连续 sequence、七维 action、七维关节位置与速度、七维末端位姿和夹爪位置。`.jsonl.partial` 表示未完整保存的数据，只会被统计并忽略。完整 schema 和示例见[开发与调试手册](docs/DEVELOPMENT.md#3-raw-数据约定)。
-
-### 2. 转换后格式
-
-输出是一个可由 LeRobot 直接读取的 Dataset v3 目录，并额外包含本项目生成的质量报告：
-
-```text
-OUTPUT_DATASET/
-├── data/
-│   └── chunk-000/
-│       └── file-000.parquet
-├── meta/
-│   ├── episodes/chunk-000/file-000.parquet
-│   ├── info.json
-│   ├── stats.json
-│   └── tasks.parquet
-└── quality_report.json
-```
-
-`meta/info.json` 的 `codebase_version` 为 `v3.0`，`fps` 等于转换参数，Parquet 数据包含 `observation.state`、`action` 以及默认启用的 `observation.velocity` 和 `observation.ee_pose`。`quality_report.json` 不属于 LeRobot 标准文件，是转换器附加的采样质量报告。完整输出说明见[开发与调试手册](docs/DEVELOPMENT.md#4-lerobot-dataset-v3-输出约定)。
-
-## （4）环境要求
-
-- Ubuntu 或其他受 LeRobot 支持的 Linux 环境
-- Python 3.12（由 `.python-version` 指定并通过 pyenv 安装）
-- Git、[pyenv](https://github.com/pyenv/pyenv) 与 [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- 转换数据集需要 dataset 可选依赖
-- 后续处理视频时，系统需要 FFmpeg 共享库
-
-本项目使用独立 `.venv`，不会修改已经通过硬件验证的 `agilex-sdk-python` 或 `agilex-gello-software` 环境。Linux 下锁文件选择 PyTorch CPU wheel，纯关节数据转换不需要 CUDA。
-
-## （5）快速开始
-
-### 1. 进入项目并初始化环境
-
-从项目仓库 clone 后进入目录：
+准备 Python 3.12、Git、uv；在本仓库根目录执行：
 
 ```bash
-cd lerobot_converter
-requested_version="$(<.python-version)"
-resolved_version="$(pyenv latest -k "$requested_version")"
-pyenv install -s "$resolved_version"
-interpreter="$(PYENV_VERSION="$resolved_version" pyenv which python)"
-UV_NO_MANAGED_PYTHON=1 uv sync --frozen --extra dataset --python "$interpreter"
+uv sync --frozen --extra dataset
+uv run --extra dataset lerobot-converter --help
 ```
 
-pyenv 负责 Python 解释器，uv 负责 `.venv` 和锁定依赖；`UV_NO_MANAGED_PYTHON=1` 防止 uv 自行下载另一套 Python。`uv sync` 会安装 LeRobot、PyTorch、TorchCodec、PyAV 以及开发工具。通常无需激活虚拟环境，后续直接使用 `uv run`。
+`dataset` 安装锁定的 LeRobot 0.6.1 及 PyTorch 等依赖；Linux 使用 CPU wheel，不需要 CUDA。FFmpeg 动态库与 pyenv 流程见[安装指南](docs/installation.md)。
 
-### 2. 安装系统 FFmpeg
-
-当前转换器尚未写入视频，但为后续视频 feature 提前安装 TorchCodec 所需的系统共享库：
+## 转换与检查
 
 ```bash
-sudo apt update
-sudo apt install -y ffmpeg
-sudo ldconfig
+uv run --extra dataset lerobot-converter INPUT_SESSION OUTPUT_DATASET
 ```
 
-不要使用 `pip install ffmpeg` 或 `uv add ffmpeg` 替代系统包，它们不能提供 TorchCodec 所需的 `libavutil.so`、`libavcodec.so` 和 `libavformat.so`。
+将两个路径替换为实际目录。默认输出 30 FPS，repo ID 为 `local/<session目录名>`；无需显式重复默认参数。输入必须有合法 `manifest.json` 和至少一个已保存的 `episodes/episode_*.jsonl`。`.jsonl.partial` 仅统计，不转换；输出目录必须尚不存在。
 
-验证环境：
+转换成功生成 LeRobot 的 `data/`、`meta/` 和附加 `quality_report.json`，CLI 同时输出报告 JSON。raw 保持原样。报告中的实际采样率、最大间隔和时间匹配误差用于判断采集质量。
+
+## 与 controller 配合
+
+在 controller 根目录运行：
 
 ```bash
-ffmpeg -version
-uv run python -c "from torchcodec.decoders import VideoDecoder; print('TorchCodec 加载正常')"
-uv run python -c "from lerobot.utils.import_utils import get_safe_default_video_backend; print(get_safe_default_video_backend())"
+./scripts/start_data_record.sh
 ```
 
-默认视频后端应输出 `torchcodec`。更详细的动态库排查方法见[开发与调试手册](docs/DEVELOPMENT.md#1-python-依赖与系统视频库)。
-
-### 3. 转换 raw session
-
-以下命令假设 `lerobot_converter/`、`data/raw/` 和 `data/lerobot/` 位于同一个工作区中：
+按 S 保存正式 episode。正常退出且清理成功后，controller 使用 converter 自己的解释器执行转换；`--skip-conversion` 只保留 raw。已有 session 可在 controller 中单独转换：
 
 ```bash
-uv run --extra dataset lerobot-converter \
-  ../data/raw/session_YYYYMMDD_HHMMSS \
-  ../data/lerobot/session_YYYYMMDD_HHMMSS \
-  --repo-id local/piper_x_gello_session_YYYYMMDD_HHMMSS \
-  --fps 30
+uv run agilex-controller convert data/raw/SESSION data/lerobot/DATASET
 ```
 
-输入 session 必须包含合法的 `manifest.json` 和至少一个正式的 `episodes/episode_*.jsonl`。输出目录必须尚不存在，转换器不会覆盖已有数据集。
+采集频率、输出 FPS 和目标路径由 controller 配置管理；converter 不读取 controller TOML。其他项目只要实现相同 [raw v1 约定](docs/reference/raw-format.md)，也可独立调用本 CLI 或 Python API。
 
-默认字段映射：
-
-| Raw 字段             | LeRobot feature        |
-| ------------------ | ---------------------- |
-| `joint_positions`  | `observation.state`    |
-| `action`           | `action`               |
-| `joint_velocities` | `observation.velocity` |
-| `ee_pos_quat`      | `observation.ee_pose`  |
-
-不需要可选 feature 时可使用：
+## 开发与文档
 
 ```bash
-uv run --extra dataset lerobot-converter \
-  INPUT_SESSION OUTPUT_DATASET \
-  --fps 30 \
-  --without-velocity \
-  --without-ee-pose
+uv run --frozen --extra dataset pytest
+uv run --frozen --extra dataset ruff check --isolated .
+uv build
 ```
 
-### 4. 检查输出
+单元测试使用 fake writer，不需要设备，也不验证真实 LeRobot 文件可读性；真实 writer 的转换与读回在 controller 集成测试中验证。
 
-成功后输出目录包含 LeRobot v3 的 `meta/`、`data/` 等内容，以及转换器额外生成的 `quality_report.json`。报告记录每个 episode 的原始样本数、转换帧数、实际采样率、最大采样间隔和最大时间匹配误差。
+- [架构与重采样](docs/index.md)
+- [安装指南](docs/installation.md)
+- [CLI 参考](docs/reference/cli.md)
+- [Raw v1 数据格式](docs/reference/raw-format.md)
+- [输出与质量报告](docs/reference/output.md)
+- [配置参考](docs/reference/config.md)
+- [故障排查](docs/reference/errors.md)
+- [贡献指南](CONTRIBUTING.md)
+- [版本记录](CHANGELOG.md)
+- [许可状态](LICENSE)
 
-```bash
-python -m json.tool ../data/lerobot/session_YYYYMMDD_HHMMSS/quality_report.json
-```
-
-## （6）与数据记录脚本配合
-
-工作区根目录的 `start_data_record.sh` 默认在记录结束、安全回零并关闭 CAN/ZMQ 后调用：
-
-```text
-lerobot_converter/.venv/bin/lerobot-converter
-```
-
-自动转换的目标 FPS 由 `--dataset-fps` 控制：
-
-```bash
-./start_data_record.sh --task "pick up the object" --dataset-fps 30
-```
-
-只保留 raw session、暂不转换时使用：
-
-```bash
-./start_data_record.sh --task "pick up the object" --skip-conversion
-```
-
-## （7）开发检查
-
-```bash
-uv run --group dev pytest
-uv run --group dev ruff check .
-```
-
-转换规则、重采样算法、raw 格式要求、常见失败和调试流程见[开发与调试手册](docs/DEVELOPMENT.md)。
+本仓库尚未选定项目级许可证；LeRobot、PyTorch 等依赖继续适用各自许可。

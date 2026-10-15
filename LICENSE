@@ -1,0 +1,9 @@
+Project-wide license status
+
+No project-wide license has been selected for newly authored lerobot-converter
+code. This file does not grant additional rights to that code.
+
+Third-party dependencies and incorporated components retain their own licenses.
+LeRobot, PyTorch, TorchCodec, and related packages are separate upstream
+projects; their licenses are not a project-wide license for this repository.
+Preserve applicable notices when redistributing third-party material.
