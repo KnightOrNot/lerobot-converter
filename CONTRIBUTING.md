@@ -42,3 +42,7 @@ uv build
 先提交、验证并发布本库，再更新 controller gitlink。独立 checkout 与 submodule 不会自动同步。不要提交采集数据、派生数据集、虚拟环境或构建产物。
 
 参数、格式与默认行为变化时更新 README、`docs/reference/`、CHANGELOG 和测试。保留依赖来源与许可声明；当前未选定项目级授权协议。
+
+## RGB-D 回归
+
+修改 `images.py` 或 feature 时，验证所有图像在 writer 创建前检查，原始深度不色彩化、不量化，深度尺度来自 manifest；RGB 与深度独立匹配同一目标轴。运行 controller 的 `uv run --frozen pytest -m integration`，检查 MP4 解码、0/65535 深度、米制读取和 raw 不变。LeRobot 当前默认读深度单位是 mm，验证米制时显式 `depth_output_unit="m"`。

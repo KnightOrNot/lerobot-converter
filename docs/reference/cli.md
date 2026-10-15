@@ -13,6 +13,7 @@ uv run --extra dataset lerobot-converter SESSION OUTPUT [OPTIONS]
 | `SESSION` | 必填；包含 manifest 和 episodes 的目录 |
 | `OUTPUT` | 必填；拒绝覆盖已存在目录 |
 | `--repo-id ID` | `local/<session目录名>`，本地元数据 ID，不触发上传 |
+| `--max-camera-skew-ms MS` | 默认来自 v2 manifest；显式正有限值覆盖每路最大目标匹配误差 |
 | `--fps N` | `30`，正整数目标 FPS |
 | `--without-velocity` | 不写 `observation.velocity` |
 | `--without-ee-pose` | 不写 `observation.ee_pose` |

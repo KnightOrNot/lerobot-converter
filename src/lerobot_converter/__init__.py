@@ -30,6 +30,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="omit observation.ee_pose",
     )
+    parser.add_argument(
+        "--max-camera-skew-ms",
+        type=float,
+        help="override raw camera matching tolerance",
+    )
     return parser
 
 
@@ -43,6 +48,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             fps=args.fps,
             include_velocity=not args.without_velocity,
             include_ee_pose=not args.without_ee_pose,
+            max_camera_skew_ms=args.max_camera_skew_ms,
         )
     except (ConversionError, OSError, ValueError) as exc:
         print(f"lerobot-converter: {exc}", file=sys.stderr)

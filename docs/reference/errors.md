@@ -2,7 +2,7 @@
 
 | 现象 | 检查与处理 |
 | --- | --- |
-| `manifest not found` / 字段不匹配 | 输入必须指向 session 根目录，核对 [Raw v1](raw-format.md) |
+| `manifest not found` / 字段不匹配 | 输入必须指向 session 根目录，核对 [Raw v1/v2](raw-format.md) |
 | 没有 completed episode | 仅有 partial 不会转换；controller 中按 S 保存正式集 |
 | sequence、维度、NaN/Inf 或时间戳错误 | 按报错文件/行排查采集端；不要删行或改 raw 来掩盖损坏 |
 | `output already exists` | 选择新的输出路径；转换器拒绝覆盖旧数据 |
@@ -21,8 +21,14 @@ uv run python -c "from pathlib import Path; from lerobot_converter.converter imp
 
 ## 系统库与失败输出
 
-按[安装指南](../installation.md)安装系统 FFmpeg；`ldconfig -p` 可检查动态库。纯状态转换设置 `use_videos=False`，LeRobot 的视频后端回退警告不一定表示状态转换失败，应看退出码、报告与最终数据集。后端加载成功也不表示转换器支持视频输入。
+按[安装指南](../installation.md)安装系统 FFmpeg；`ldconfig -p` 可检查动态库。纯状态转换设置 `use_videos=False`，LeRobot 的视频后端回退警告不一定表示状态转换失败，应看退出码、报告与最终数据集。RGB 使用真实视频编码后端，深度使用无损图像存储。
 
 失败可能发生在 writer 创建、写帧、保存、finalize 或报告落盘阶段。不要把已有输出目录或缺少成功报告的数据集直接当作成功产物；保留原始 session，诊断后重新生成新目录。
 
 问题报告附 CLI、提交、Python 与锁定依赖、完整错误和脱敏 raw 示例，说明使用 fake writer 还是实际 LeRobot。原始采集数据不应直接提交到 Git。
+
+## 相机校验失败
+
+缺少索引/PNG、损坏图像、错误尺寸/模式、重复路径、时间倒退、无效深度尺度或未映射的 hardware_clock 都会在 writer 创建前拒绝。`camera matching error` 表示目标时刻附近缺少满足容差的帧；检查采集质量，不能通过改 raw 掩盖缺帧。`--max-camera-skew-ms` 放宽阈值也会降低时间约束，应依据实验要求决定。
+
+`prepare_episode` 仅验证关节，不验证相机；完整 `convert_session` 才验证 v2 图像和统一时间轴。

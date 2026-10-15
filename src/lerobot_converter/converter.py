@@ -5,7 +5,8 @@ from __future__ import annotations
 import bisect
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from dataclasses import field as dataclass_field
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Protocol
@@ -37,6 +38,7 @@ class EpisodeQuality:
     dimension_errors: int
     non_finite_errors: int
     max_time_match_error_ms: float
+    cameras: dict[str, Any] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -78,7 +80,6 @@ _INTEGER_FIELDS = (
 )
 _REQUIRED_MANIFEST = {
     "format": "piper_x_gello_raw",
-    "format_version": 1,
     "clock": "time.monotonic_ns",
     "robot_type": "piper_x",
     "joint_units": "rad",
@@ -103,6 +104,11 @@ def _read_manifest(session: Path) -> dict[str, Any]:
             raise ConversionError(
                 f"manifest field {key!r} must be {expected!r}, got {value.get(key)!r}"
             )
+    if type(value.get("format_version")) is not int or value["format_version"] not in (
+        1,
+        2,
+    ):
+        raise ConversionError("manifest format_version must be 1 or 2")
     if not isinstance(value.get("task"), str) or not value["task"].strip():
         raise ConversionError("manifest task must be a non-empty string")
     names = value.get("joint_names")
@@ -254,7 +260,11 @@ def prepare_episode(path: Path, *, fps: int) -> PreparedEpisode:
 
 
 def _features(
-    joint_names: list[str], *, include_velocity: bool, include_ee_pose: bool
+    joint_names: list[str],
+    *,
+    include_velocity: bool,
+    include_ee_pose: bool,
+    cameras: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     features: dict[str, Any] = {
         "observation.state": {
@@ -280,6 +290,16 @@ def _features(
             "shape": (7,),
             "names": ["x", "y", "z", "qx", "qy", "qz", "qw"],
         }
+    for name, spec in (cameras or {}).items():
+        depth = spec.get("kind") == "depth"
+        feature = {
+            "dtype": "image" if depth else "video",
+            "shape": (spec["height"], spec["width"], 1 if depth else 3),
+            "names": ["height", "width", "channels"],
+        }
+        if depth:
+            feature["info"] = {"is_depth_map": True, "depth_unit": "m"}
+        features[f"observation.images.{name}"] = feature
     return features
 
 
@@ -302,6 +322,7 @@ def convert_session(
     fps: int = 30,
     include_velocity: bool = True,
     include_ee_pose: bool = True,
+    max_camera_skew_ms: float | None = None,
     dataset_factory: Any = _default_dataset_factory,
 ) -> ConversionReport:
     """Validate one raw session and write one local LeRobot Dataset v3."""
@@ -310,9 +331,16 @@ def convert_session(
     output_path = Path(output).resolve()
     if fps <= 0:
         raise ValueError("fps must be positive")
+    if max_camera_skew_ms is not None and (
+        not math.isfinite(max_camera_skew_ms) or max_camera_skew_ms <= 0
+    ):
+        raise ValueError("max_camera_skew_ms must be positive and finite")
     if output_path.exists():
         raise ConversionError(f"output already exists: {output_path}")
     manifest = _read_manifest(session_path)
+    from .images import align_images, camera_specs
+
+    cameras = camera_specs(manifest, ConversionError)
     episodes_dir = session_path / "episodes"
     episode_paths = sorted(episodes_dir.glob("episode_*.jsonl"))
     partial_paths = sorted(episodes_dir.glob("episode_*.jsonl.partial"))
@@ -320,6 +348,26 @@ def convert_session(
         raise ConversionError(f"no completed episodes found in {episodes_dir}")
 
     prepared = tuple(prepare_episode(path, fps=fps) for path in episode_paths)
+    aligned = []
+    updated = []
+    for episode in prepared:
+        images, quality = ({}, {})
+        if cameras:
+            images, quality = align_images(
+                session_path,
+                episode.source.stem,
+                cameras,
+                start_ns=episode.frames[0]["observation_time_ns"],
+                count=len(episode.frames),
+                fps=fps,
+                max_skew_ms=max_camera_skew_ms,
+                error=ConversionError,
+            )
+        aligned.append(images)
+        updated.append(
+            replace(episode, quality=replace(episode.quality, cameras=quality))
+        )
+    prepared = tuple(updated)
     dataset = dataset_factory(
         repo_id=repo_id,
         fps=fps,
@@ -327,16 +375,17 @@ def convert_session(
             list(manifest["joint_names"]),
             include_velocity=include_velocity,
             include_ee_pose=include_ee_pose,
+            cameras=cameras,
         ),
         root=output_path,
         robot_type=manifest["robot_type"],
-        use_videos=False,
+        use_videos=bool(cameras),
     )
     try:
         import numpy as np
 
-        for episode in prepared:
-            for raw in episode.frames:
+        for episode, camera_images in zip(prepared, aligned, strict=True):
+            for frame_index, raw in enumerate(episode.frames):
                 frame: dict[str, Any] = {
                     "observation.state": np.asarray(
                         raw["joint_positions"], dtype=np.float32
@@ -352,6 +401,18 @@ def convert_session(
                     frame["observation.ee_pose"] = np.asarray(
                         raw["ee_pos_quat"], dtype=np.float32
                     )
+                if cameras:
+                    from PIL import Image
+
+                    for name, paths in camera_images.items():
+                        with Image.open(paths[frame_index]) as image:
+                            array = np.asarray(image).copy()
+                        if cameras[name].get("kind") == "depth":
+                            array = (
+                                array.astype(np.float32)
+                                * np.float32(cameras[name]["depth_units_m"])
+                            )[..., None]
+                        frame[f"observation.images.{name}"] = array
                 dataset.add_frame(frame)
             dataset.save_episode()
         dataset.finalize()

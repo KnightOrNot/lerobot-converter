@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 接入 raw v2 RGB/Z16 PNG 索引、SDK 时间映射校验、逐流目标时间匹配与容差拒绝。
+- RGB 输出真实 MP4，深度以无损米制 float32 image 写入，保留旧 raw v1 与 action/observation 配对语义。
+- 质量报告增加每路匹配误差、重复帧、SDK 帧号缺口；增加坏图/坏时钟/超限回归和 controller 真实 RGB-D 读回验证。
+
 - 按 controller 文档结构整理架构、安装、CLI、配置、raw schema、输出和排障。
 - 更新旧项目目录、GELLO 脚本与自动转换入口，明确 controller 子进程调用边界。
 - 新增贡献指南、agent 规范和项目级许可状态；本次不修改转换逻辑。

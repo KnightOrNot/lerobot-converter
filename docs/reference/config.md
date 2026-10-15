@@ -8,7 +8,8 @@
 | repo ID | `local/<session目录名>` | 必须显式传 `repo_id` |
 | velocity | 包含 | `include_velocity=True` |
 | 末端位姿 | 包含 | `include_ee_pose=True` |
-| 视频 | 不支持 | 当前 writer 固定 `use_videos=False` |
+| 相机误差 | manifest 每路 max_skew_ms | `max_camera_skew_ms=None`；正有限值覆盖 |
+| RGB/深度 | 由 raw v2 声明 | RGB video + 无损米制 depth image |
 
 输入/输出路径相对于调用目录，不是仓库目录。controller 调用时可使用自己的 `recording.dataset_fps`、数据路径和 converter 项目路径；这些配置由 controller 解析，再作为参数传来。
 

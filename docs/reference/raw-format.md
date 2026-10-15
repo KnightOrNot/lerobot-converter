@@ -1,4 +1,4 @@
-# Raw v1 数据格式
+# Raw v1/v2 数据格式
 
 输入来自 controller 的 raw recorder，或任何遵守相同约定的生产者。转换器仅校验和读取，不修复输入。
 
@@ -51,7 +51,7 @@ session_YYYYMMDD_HHMMSS/
 | 字段 | 类型 | 必须值或约束 |
 | --- | --- | --- |
 | `format` | string | 固定为 `piper_x_gello_raw` |
-| `format_version` | integer | 固定为 `1` |
+| `format_version` | integer | `1` 为纯状态；`2` 必须声明非空 cameras |
 | `clock` | string | 固定为 `time.monotonic_ns` |
 | `robot_type` | string | 固定为 `piper_x` |
 | `control_hz` | number | 原始控制目标频率，必须为正有限数 |
@@ -99,4 +99,27 @@ session_YYYYMMDD_HHMMSS/
 
 同一行的 action 和 observation 作为一对保留。当前 controller 在发送 action 后读取 observation；转换器不补偿执行延迟。command 和 observation 时间戳都必填，但仅 observation 时间戳用于构造目标轴。
 
-`--without-velocity`、`--without-ee-pose` 只改变输出 feature，不允许从 raw 中省略对应字段。夹爪约定指从臂命令/反馈；主手物理开闭方向由应用校准，不由 converter 推断。当前 schema 不包含图像或视频。
+`--without-velocity`、`--without-ee-pose` 只改变输出 feature，不允许从 raw 中省略对应字段。夹爪约定指从臂命令/反馈；主手物理开闭方向由应用校准，不由 converter 推断。v1 不包含相机；v2 的关节行保持相同约定，另带下面的相机流。
+
+## v2 相机流
+
+在原 manifest 中设 `format_version=2` 并添加非空 `cameras` 表，键名以字母开头，仅包含字母/数字/下划线。每路基本字段如下：
+
+```json
+{
+  "front": {"kind":"color", "clock":"time.monotonic_ns", "storage":"rgb8_png", "width":640, "height":480, "fps":30, "max_skew_ms":50.0},
+  "front_depth": {"kind":"depth", "clock":"time.monotonic_ns", "storage":"z16_png", "width":640, "height":480, "fps":30, "max_skew_ms":50.0, "depth_units_m":0.001}
+}
+```
+
+每路保存在 `cameras/<name>/episode_000000/`。`frames.jsonl` 每行至少包含：
+
+- `frame_index`：从零连续；`file`：目录内唯一的相对 PNG 路径。
+- `timestamp_ns`：非负且严格递增的主机单调纳秒时间。
+- `received_time_ns`、`frame_number`、`clock_uncertainty_ns`：非负整数；SDK 帧号递增，缺口用于报告。
+- `sdk_timestamp_ms`：非负有限毫秒；`sdk_timestamp_domain`：global_time 或 system_time。
+- `clock_offset_ns`：整数；`round(sdk_timestamp_ms*1e6)+clock_offset_ns` 应等于 timestamp_ns（容许 1 ns 舍入）。
+
+采样跨度不能超过 5 ms，相邻 offset 跳变不能超过 5 ms；映射时间相对接收时间最多晚 50 ms 或早 1 s。尺寸/FPS 为正整数，容差和深度尺度为正有限数。图像必须实际存在、可解码、尺寸匹配；RGB 是 RGB PNG，深度是 16 位单通道 PNG。采集端可附设备、内参、深度外参等标定信息；权威元数据仍保留在 raw。
+
+每路相机对从首个关节 observation 建立的目标轴独立选最近帧，等距选较早者，任一匹配超限即失败。允许重复选择，报告重复数。`.partial` 图像目录和没有正式关节文件的孤立图像目录不参与转换。这里只接受已经映射到同一主机时钟的流，不猜测跨设备 epoch，不根据帧号伪造时间对齐。

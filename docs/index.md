@@ -29,13 +29,15 @@ controller raw 中 observation 是 action 下发后的反馈。转换器保持�
 - `convert_session(session, output, repo_id="local/demo", fps=30)`：校验整个 session 并写数据集。
 - `dataset_factory`：测试注入实现 `DatasetProtocol` 的 writer。
 
-当前 `use_videos=False`，没有相机、图像、视频或跨设备时钟同步输入。未来扩展需显式定义 schema 和同步策略，不能仅添加 LeRobot feature 就视为完成接入。
+raw v1 保持 `use_videos=False`；v2 在创建 writer 前校验所有图像及每路时间匹配。RGB、深度分别对上述同一目标轴取最近帧；不得按帧号或按重采样后的关节时间再次建立另一条轴。`max_camera_skew_ms=None` 使用 manifest 的每路容差，正有限显式值覆盖它。图像路径仅保留索引，写帧时逐张加载，不将整集像素常驻内存。
+
+RGB 为 MP4 video；深度为带 is_depth_map/depth_unit=m 的 image，以米制 float32 TIFF 嵌入 Parquet，避免深度视频量化。深度单位、内外参和独立时间来源由采集端声明；本库不导入 RealSense、不做硬件授时或空间配准。
 
 ## 文档导航
 
 - [安装](installation.md)
 - [CLI](reference/cli.md)
-- [Raw v1](reference/raw-format.md)
+- [Raw v1/v2](reference/raw-format.md)
 - [输出与报告](reference/output.md)
 - [配置](reference/config.md)
 - [排障](reference/errors.md)

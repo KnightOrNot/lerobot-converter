@@ -2,9 +2,9 @@
 
 ## Project Structure & Responsibilities
 
-`src/lerobot_converter/__init__.py` owns CLI parsing, exit codes, and report output. `converter.py` validates raw v1 sessions, resamples observation timestamps, writes LeRobot Dataset v3, and reports quality. `tests/` uses temporary sessions and fake writers; `docs/` contains architecture, installation, schema, CLI, and troubleshooting references.
+`src/lerobot_converter/__init__.py` owns CLI parsing, exit codes, and report output. `converter.py` validates raw v1/v2 sessions, resamples observation timestamps, writes LeRobot Dataset v3, and reports quality. `tests/` uses temporary sessions and fake writers; `docs/` contains architecture, installation, schema, CLI, and troubleshooting references.
 
-Keep hardware, real-time following, recording, and process orchestration in SDK/GELLO/controller. This converter reads immutable raw input and writes a new derived dataset. Camera and video ingestion are not implemented. Do not add hardware imports or make controller import LeRobot into its Python process.
+Keep hardware, real-time following, recording, and process orchestration in SDK/GELLO/controller. This converter reads immutable raw input and writes a new derived dataset. `images.py` validates RGB/Z16 PNG indexes and matches streams to the shared target timeline. RGB uses video features; depth uses lossless float32 image features in meters. Never quantize native depth as ordinary RGB video. Do not add hardware imports or make controller import LeRobot into its Python process.
 
 ## Build, Test, and Development Commands
 
