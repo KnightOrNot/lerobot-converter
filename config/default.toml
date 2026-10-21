@@ -1,0 +1,13 @@
+# lerobot-converter 默认参数。
+#
+# 优先级：显式命令行参数 > 本文件。session/output 仍是必需的位置参数。
+# 本文件只控制离线转换，不访问相机、机械臂或控制 SDK 环境。
+
+[conversion]
+# 空字符串表示 local/<session 目录名>。
+repo_id = ""
+# 目标数据集 FPS；raw 控制频率与它不同。
+fps = 30
+# 默认保留速度与末端位姿特征。
+without_velocity = false
+without_ee_pose = false
