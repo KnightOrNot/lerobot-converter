@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from lerobot_converter import _parser
 from lerobot_converter.configuration import load_config
 

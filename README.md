@@ -61,6 +61,11 @@ lerobot_converter/
 
 ## （3）转换格式契约
 
+兼容 controller 的 raw v1 和带 RGB-D 的 raw v2。v2 的独立相机索引按输出
+规则时间轴匹配，限制时间偏差并验证路径；RGB 输出视频，深度按原始 Z16 与
+`depth_units_m` 转换为米制 float32 image feature。原始输入保持不变，质量报告
+包含逐相机的唯一帧数与最大时间匹配误差。
+
 ### 1. 转换前格式
 
 转换器的输入不是任意 JSON 或单个 JSONL 文件，而是一个完整的 raw session 目录：
@@ -124,7 +129,7 @@ pyenv 负责 Python 解释器，uv 负责 `.venv` 和锁定依赖；`UV_NO_MANAG
 
 ### 2. 安装系统 FFmpeg
 
-当前转换器尚未写入视频，但为后续视频 feature 提前安装 TorchCodec 所需的系统共享库：
+RGB 视频写入及 TorchCodec 读回需要系统 FFmpeg 共享库：
 
 ```bash
 sudo apt update

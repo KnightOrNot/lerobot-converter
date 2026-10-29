@@ -5,7 +5,8 @@ from __future__ import annotations
 import bisect
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from dataclasses import field as dataclass_field
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Protocol
@@ -37,6 +38,7 @@ class EpisodeQuality:
     dimension_errors: int
     non_finite_errors: int
     max_time_match_error_ms: float
+    cameras: dict[str, Any] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -78,7 +80,6 @@ _INTEGER_FIELDS = (
 )
 _REQUIRED_MANIFEST = {
     "format": "piper_x_gello_raw",
-    "format_version": 1,
     "clock": "time.monotonic_ns",
     "robot_type": "piper_x",
     "joint_units": "rad",
@@ -98,6 +99,11 @@ def _read_manifest(session: Path) -> dict[str, Any]:
         raise ConversionError(f"invalid JSON in {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise ConversionError(f"manifest must be a JSON object: {path}")
+    if type(value.get("format_version")) is not int or value["format_version"] not in (
+        1,
+        2,
+    ):
+        raise ConversionError("manifest format_version must be 1 or 2")
     for key, expected in _REQUIRED_MANIFEST.items():
         if value.get(key) != expected:
             raise ConversionError(
@@ -150,7 +156,8 @@ def _validate_frame(
             raise ConversionError(f"{location}: {field} must be a non-negative integer")
     if frame["sequence"] != expected_sequence:
         raise ConversionError(
-            f"{location}: expected sequence {expected_sequence}, got {frame['sequence']}"
+            f"{location}: expected sequence {expected_sequence}, "
+            f"got {frame['sequence']}"
         )
     for field, size in _VECTOR_SIZES.items():
         frame[field] = _finite_vector(frame.get(field), size, field, location)
@@ -294,6 +301,124 @@ def _default_dataset_factory(**kwargs: Any) -> DatasetProtocol:
     return LeRobotDataset.create(**kwargs)
 
 
+def _inside(root: Path, relative: str) -> Path:
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()):
+        raise ConversionError(f"camera path escapes session: {relative}")
+    return path
+
+
+def _camera_samples(
+    session: Path, episode: PreparedEpisode, cameras: dict, fps: int
+) -> tuple[dict, dict]:
+    """Match independently captured streams to the regular output timeline."""
+    selected, quality = {}, {}
+    start = episode.frames[0]["observation_time_ns"]
+    targets = [start + round(i * 1e9 / fps) for i in range(len(episode.frames))]
+    for name, metadata in cameras.items():
+        if not name or any(
+            c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+            for c in name
+        ):
+            raise ConversionError(f"invalid camera name: {name}")
+        kind = metadata.get("kind")
+        if kind not in {"color", "depth"}:
+            raise ConversionError(f"invalid camera kind: {kind}")
+        index = _inside(session, f"cameras/{name}/{episode.source.stem}/frames.jsonl")
+        try:
+            rows = [
+                json.loads(line)
+                for line in index.read_text().splitlines()
+                if line.strip()
+            ]
+            times = [row["timestamp_ns"] for row in rows]
+        except (OSError, KeyError, ValueError) as exc:
+            raise ConversionError(f"invalid camera index: {index}") from exc
+        if (
+            not times
+            or any(type(t) is not int or t < 0 for t in times)
+            or any(b <= a for a, b in pairwise(times))
+        ):
+            raise ConversionError(
+                f"camera timestamps must be strictly increasing: {name}"
+            )
+        limit = metadata.get("max_skew_ms", 50)
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, (int, float))
+            or not math.isfinite(limit)
+            or limit <= 0
+        ):
+            raise ConversionError(f"invalid camera skew limit: {name}")
+        matches, errors = [], []
+        for target in targets:
+            at = bisect.bisect_left(times, target)
+            candidates = {max(0, at - 1), min(at, len(times) - 1)}
+            nearest = min(candidates, key=lambda i: (abs(times[i] - target), i))
+            error = abs(times[nearest] - target) / 1e6
+            if error > limit:
+                raise ConversionError(
+                    f"{name} timestamp skew {error:.3f} ms exceeds {limit}"
+                )
+            row = rows[nearest]
+            if row.get("clock_uncertainty_ns", 0) / 1e6 > limit:
+                raise ConversionError(f"{name} clock uncertainty exceeds skew limit")
+            image_path = _inside(index.parent, row["file"])
+            if not image_path.is_file():
+                raise ConversionError(f"missing camera image: {image_path}")
+            matches.append(image_path)
+            errors.append(error)
+        selected[name] = matches
+        quality[name] = {
+            "unique_frames": len(set(matches)),
+            "max_time_match_error_ms": max(errors),
+        }
+    return selected, quality
+
+
+def _camera_features(cameras: dict) -> dict:
+    result = {}
+    for name, metadata in cameras.items():
+        height, width = metadata.get("height"), metadata.get("width")
+        if any(type(v) is not int or v <= 0 for v in (height, width)):
+            raise ConversionError(f"invalid camera dimensions: {name}")
+        depth = metadata["kind"] == "depth"
+        feature = {
+            "dtype": "image" if depth else "video",
+            "shape": (height, width, 1 if depth else 3),
+            "names": ["height", "width", "channels"],
+        }
+        if depth:
+            scale = metadata.get("depth_units_m")
+            if (
+                isinstance(scale, bool)
+                or not isinstance(scale, (int, float))
+                or not math.isfinite(scale)
+                or scale <= 0
+            ):
+                raise ConversionError(f"invalid depth scale: {name}")
+            feature["info"] = {"is_depth_map": True, "depth_unit": "m"}
+        result[f"observation.images.{name}"] = feature
+    return result
+
+
+def _camera_image(path: Path, metadata: dict) -> Any:
+    import numpy as np
+    from PIL import Image
+
+    with Image.open(path) as image:
+        pixels = np.asarray(image).copy()
+    depth = metadata["kind"] == "depth"
+    shape = (metadata["height"], metadata["width"]) + (() if depth else (3,))
+    if pixels.shape != shape or pixels.dtype != (np.uint16 if depth else np.uint8):
+        raise ConversionError(f"invalid camera image layout: {path}")
+    return (
+        (pixels.astype(np.float32) * metadata["depth_units_m"])[..., None]
+        if depth
+        else pixels
+    )
+
+
 def convert_session(
     session: str | Path,
     output: str | Path,
@@ -320,23 +445,40 @@ def convert_session(
         raise ConversionError(f"no completed episodes found in {episodes_dir}")
 
     prepared = tuple(prepare_episode(path, fps=fps) for path in episode_paths)
+    cameras = manifest.get("cameras", {})
+    if not isinstance(cameras, dict):
+        raise ConversionError("manifest cameras must be an object")
+    camera_features = _camera_features(cameras)
+    camera_samples = {}
+    if cameras:
+        updated = []
+        for episode in prepared:
+            samples, quality = _camera_samples(session_path, episode, cameras, fps)
+            camera_samples[episode.source] = samples
+            updated.append(
+                replace(episode, quality=replace(episode.quality, cameras=quality))
+            )
+        prepared = tuple(updated)
     dataset = dataset_factory(
         repo_id=repo_id,
         fps=fps,
-        features=_features(
-            list(manifest["joint_names"]),
-            include_velocity=include_velocity,
-            include_ee_pose=include_ee_pose,
-        ),
+        features={
+            **_features(
+                list(manifest["joint_names"]),
+                include_velocity=include_velocity,
+                include_ee_pose=include_ee_pose,
+            ),
+            **camera_features,
+        },
         root=output_path,
         robot_type=manifest["robot_type"],
-        use_videos=False,
+        use_videos=bool(cameras),
     )
     try:
         import numpy as np
 
         for episode in prepared:
-            for raw in episode.frames:
+            for index, raw in enumerate(episode.frames):
                 frame: dict[str, Any] = {
                     "observation.state": np.asarray(
                         raw["joint_positions"], dtype=np.float32
@@ -351,6 +493,10 @@ def convert_session(
                 if include_ee_pose:
                     frame["observation.ee_pose"] = np.asarray(
                         raw["ee_pos_quat"], dtype=np.float32
+                    )
+                for name, metadata in cameras.items():
+                    frame[f"observation.images.{name}"] = _camera_image(
+                        camera_samples[episode.source][name][index], metadata
                     )
                 dataset.add_frame(frame)
             dataset.save_episode()

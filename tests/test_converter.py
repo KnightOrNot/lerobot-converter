@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from lerobot_converter.converter import (
     ConversionError,
     convert_session,

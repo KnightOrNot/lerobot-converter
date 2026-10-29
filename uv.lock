@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "(platform_machine == 'AMD64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')",
@@ -746,6 +746,10 @@ dataset = [
 name = "lerobot-converter"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "numpy" },
+    { name = "pillow" },
+]
 
 [package.optional-dependencies]
 dataset = [
@@ -765,6 +769,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "lerobot", extras = ["dataset"], marker = "extra == 'dataset'", specifier = "==0.6.1" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'dataset'", specifier = ">=2.2.1,<2.12", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and extra == 'dataset'", specifier = ">=2.2.1,<2.12" },
     { name = "torchvision", marker = "sys_platform == 'linux' and extra == 'dataset'", specifier = ">=0.21,<0.27", index = "https://download.pytorch.org/whl/cpu" },

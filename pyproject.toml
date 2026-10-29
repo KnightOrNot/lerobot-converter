@@ -7,7 +7,7 @@ authors = [
     { name = "RightOrNot", email = "jue1251665735@outlook.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["numpy>=1.26", "pillow>=10"]
 
 [project.optional-dependencies]
 dataset = [
