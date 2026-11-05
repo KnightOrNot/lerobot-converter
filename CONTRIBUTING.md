@@ -10,8 +10,10 @@
 ## 检查
 
 ```bash
-uv run --project lerobot-converter --with pytest --with ruff pytest -q
-uv run --project lerobot-converter --with ruff ruff check src
+uv python install 3.12
+uv sync --frozen --extra dataset
+uv run --frozen --extra dataset pytest -q
+uv run --frozen ruff check src tests
 ```
 
 涉及 LeRobot 写入的改动需要真实 dataset extra 的回归测试；
